@@ -1,0 +1,611 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>AI Emotion Based Recommender</title>
+  <script src="https://unpkg.com/face-api.js@0.22.2/dist/face-api.min.js"></script>
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: Segoe UI, sans-serif;
+      min-height: 100vh;
+      background: linear-gradient(135deg, #0f2027, #203a43, #2c5364);
+      color: white;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .app-container {
+      width: 95%;
+      max-width: 1200px;
+      background: rgba(255,255,255,0.1);
+      backdrop-filter: blur(15px);
+      border-radius: 20px;
+      padding: 25px;
+      box-shadow: 0 0 25px rgba(0,0,0,0.4);
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+
+    h1 {
+      grid-column: span 2;
+      text-align: center;
+      margin-bottom: 10px;
+      font-weight: 600;
+    }
+
+    .camera-box {
+      background: rgba(0,0,0,0.4);
+      border-radius: 15px;
+      padding: 15px;
+      text-align: center;
+      position: relative;
+    }
+
+    video, canvas {
+      width: 100%;
+      border-radius: 12px;
+      transform: scaleX(-1);
+    }
+
+    canvas {
+      position: absolute;
+      left: 0;
+      top: 0;
+    }
+
+    .emotion-badge {
+      margin-top: 10px;
+      display: inline-block;
+      padding: 8px 16px;
+      border-radius: 20px;
+      background: linear-gradient(45deg, #00c6ff, #0072ff);
+      font-weight: bold;
+    }
+
+    .rec-box {
+      display: grid;
+      grid-template-rows: repeat(3, 1fr);
+      gap: 15px;
+    }
+
+    .card {
+      background: rgba(255,255,255,0.12);
+      border-radius: 16px;
+      padding: 15px;
+    }
+
+    .items {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .item {
+      width: 90px;
+      text-align: center;
+      font-size: 12px;
+      cursor: pointer;
+    }
+
+    .item img {
+      width: 100%;
+      border-radius: 10px;
+    }
+
+    footer {
+      grid-column: span 2;
+      text-align: center;
+      margin-top: 8px;
+      opacity: 0.7;
+      font-size: 13px;
+    }
+
+    @media(max-width: 768px) {
+      .app-container {
+        grid-template-columns: 1fr;
+      }
+      h1, footer {
+        grid-column: span 1;
+      }
+    }
+    #toggleBtn {
+  margin-top: 12px;
+  padding: 12px 24px;
+  border: none;
+  border-radius: 8px;
+  background: #4CAF50;
+  color: white;
+  font-size: 16px;
+  cursor: pointer;
+  transition: 0.3s;
+}
+
+#toggleBtn.stop {
+  background: #f44336;
+}
+
+  </style>
+</head>
+
+<body>
+
+<div class="app-container">
+  <h1>AI Emotion Based Recommendation System</h1>
+
+  <div class="camera-box">
+    <video id="video" autoplay muted></video>
+    <canvas id="overlay"></canvas>
+    <div class="emotion-badge" id="emotion">Detecting...</div>
+  </div>
+
+  <div class="rec-box">
+
+    <div class="card">
+      <h3>🎵 Music</h3>
+      <div class="items" id="music"></div>
+    </div>
+
+    <div class="card">
+      <h3>📚 Books</h3>
+      <div class="items" id="books"></div>
+    </div>
+
+    <div class="card">
+      <h3>🎬 Movies</h3>
+      <div class="items" id="movies"></div>
+    </div>
+
+   <button id="toggleBtn">⏵ Start Detection</button>
+
+
+   
+</div>
+ <script>
+const video = document.getElementById("video");
+const canvas = document.getElementById("overlay");
+const toggleBtn = document.getElementById("toggleBtn");
+
+let detecting = false;
+let detectInterval = null;
+
+// ================== DATA ==================
+ const data = {
+  happy: {
+    emojis: ["😄", "😊", "😁"],
+    music: [
+      { name: "Happy – Pharrell Williams", img: "https://img.youtube.com/vi/ZbZSe6N_BXs/mqdefault.jpg", link: "https://www.youtube.com/watch?v=ZbZSe6N_BXs" },
+      { name: "Uptown Funk", img: "https://img.youtube.com/vi/OPf0YbXqDm0/mqdefault.jpg", link: "https://www.youtube.com/watch?v=OPf0YbXqDm0" },
+      { name: "Can't Stop The Feeling", img: "https://img.youtube.com/vi/ru0K8uYEZWw/mqdefault.jpg", link: "https://www.youtube.com/watch?v=ru0K8uYEZWw" },
+      { name: "Ilahi", img: "https://img.youtube.com/vi/fdubeMFwuGs/mqdefault.jpg", link: "https://www.youtube.com/watch?v=fdubeMFwuGs" },
+      { name: "On Top of the World", img: "https://img.youtube.com/vi/w5tWYmIOWGk/mqdefault.jpg", link: "https://www.youtube.com/watch?v=w5tWYmIOWGk" }
+    ],
+    movies: [
+      { name: "3 Idiots", img: "https://image.tmdb.org/t/p/w300/66A9MqXOyVFCssoloscw79z8Tew.jpg", link: "https://www.google.com/search?q=3+idiots+movie" },
+      { name: "Paddington", img: "https://image.tmdb.org/t/p/w300/ytkk2UX3pQbOHW82xUCVi9tiA52.jpg", link: "https://www.google.com/search?q=paddington+movie" },
+      { name: "Zindagi Na Milegi Dobara", img: "https://image.tmdb.org/t/p/w300/1bZlGw1m9uYkH8m2hXQ8Zo8zTXI.jpg", link: "https://www.google.com/search?q=zindagi+na+milegi+dobara" },
+      { name: "Toy Story", img: "https://image.tmdb.org/t/p/w300/uXDfjJbdP4ijW5hWSBrPrlKpxab.jpg", link: "https://www.google.com/search?q=toy+story+movie" },
+      { name: "Finding Nemo", img: "https://image.tmdb.org/t/p/w300/eHuGQ10FUzK1mdOY69wF5pGgEf5.jpg", link: "https://www.google.com/search?q=finding+nemo" }
+    ],
+    books: [
+      { name: "Harry Potter and the Sorcerer's Stone", img: "https://covers.openlibrary.org/b/id/7984916-M.jpg", link: "https://www.google.com/search?q=harry+potter+and+the+sorcerer%27s+stone+book" },
+      { name: "Diary of a Wimpy Kid", img: "https://covers.openlibrary.org/b/id/8231996-M.jpg", link: "https://www.google.com/search?q=diary+of+a+wimpy+kid+book" },
+      { name: "Charlie and the Chocolate Factory", img: "https://covers.openlibrary.org/b/id/10958344-M.jpg", link: "https://www.google.com/search?q=charlie+and+the+chocolate+factory+book" },
+      { name: "The Secret Garden", img: "https://covers.openlibrary.org/b/id/9251891-M.jpg", link: "https://www.google.com/search?q=the+secret+garden+book" },
+      { name: "Percy Jackson: The Lightning Thief", img: "https://covers.openlibrary.org/b/id/10561029-M.jpg", link: "https://www.google.com/search?q=percy+jackson+the+lightning+thief+book" }
+    ]
+  },
+
+  sad: {
+    emojis: ["😢", "😞", "😭"],
+    music: [
+      { name: "Lo-Fi Beats", img: "https://img.youtube.com/vi/jfKfPfyJRdk/mqdefault.jpg", link: "https://www.youtube.com/watch?v=jfKfPfyJRdk" },
+      { name: "Fix You", img: "https://img.youtube.com/vi/k4V3Mo61fJM/mqdefault.jpg", link: "https://www.youtube.com/watch?v=k4V3Mo61fJM" },
+      { name: "Someone Like You", img: "https://img.youtube.com/vi/hLQl3WQQoQ0/mqdefault.jpg", link: "https://www.youtube.com/watch?v=hLQl3WQQoQ0" },
+      { name: "Let Her Go", img: "https://img.youtube.com/vi/RBumgq5yVrA/mqdefault.jpg", link: "https://www.youtube.com/watch?v=RBumgq5yVrA" },
+      { name: "Let Me Down Slowly", img: "https://img.youtube.com/vi/50VNCymT-Cs/mqdefault.jpg", link: "https://www.youtube.com/watch?v=50VNCymT-Cs" }
+    ],
+    movies: [
+      { name: "Forrest Gump", img: "https://image.tmdb.org/t/p/w300/arw2vcBveWOVZr6pxd9XTd1TdQa.jpg", link: "https://www.google.com/search?q=forrest+gump+movie" },
+      { name: "The Pursuit of Happyness", img: "https://image.tmdb.org/t/p/w300/f6l9rghSHORkWLurUg8C7xUt7yF.jpg", link: "https://www.google.com/search?q=the+pursuit+of+happyness+movie" },
+      { name: "Soul", img: "https://image.tmdb.org/t/p/w300/hm58Jw4Lw8OIeECIq5qyPYhAeRJ.jpg", link: "https://www.google.com/search?q=soul+movie" },
+      { name: "Five Feet Apart", img: "https://image.tmdb.org/t/p/w300/kreTuJBkUjVWePRfhHZuYfhNE1T.jpg", link: "https://www.google.com/search?q=five+feet+apart+movie" },
+      { name: "The Fault in Our Stars", img: "https://image.tmdb.org/t/p/w300/pv8AZ9G6t1iKfVtG2JjIu6bM7pG.jpg", link: "https://www.google.com/search?q=the+fault+in+our+stars+movie" }
+    ],
+    books: [
+      { name: "The Alchemist", img: "https://covers.openlibrary.org/b/id/8270605-M.jpg", link: "https://www.google.com/search?q=the+alchemist+book" },
+      { name: "You Can Win", img: "https://covers.openlibrary.org/b/id/11153230-M.jpg", link: "https://www.google.com/search?q=you+can+win+book" },
+      { name: "Think Like a Monk", img: "https://covers.openlibrary.org/b/id/10200627-M.jpg", link: "https://www.google.com/search?q=think+like+a+monk+book" },
+      { name: "It Ends With Us", img: "https://covers.openlibrary.org/b/id/12879520-M.jpg", link: "https://www.google.com/search?q=it+ends+with+us+book" },
+      { name: "Me Before You", img: "https://covers.openlibrary.org/b/id/8232406-M.jpg", link: "https://www.google.com/search?q=me+before+you+book" }
+    ]
+  },
+
+  fear: {
+    emojis: ["😨", "😱", "😰"],
+    music: [
+      { name: "Relaxing Piano", img: "https://img.youtube.com/vi/1ZYbU82GVz4/mqdefault.jpg", link: "https://www.youtube.com/watch?v=1ZYbU82GVz4" },
+      { name: "Weightless", img: "https://img.youtube.com/vi/UfcAVejslrU/mqdefault.jpg", link: "https://www.youtube.com/watch?v=UfcAVejslrU" },
+      { name: "Ambient Chill", img: "https://img.youtube.com/vi/2OEL4P1Rz04/mqdefault.jpg", link: "https://www.youtube.com/watch?v=2OEL4P1Rz04" },
+      { name: "Meditation Music", img: "https://img.youtube.com/vi/U5bOYnNuhzg/mqdefault.jpg", link: "https://www.youtube.com/watch?v=U5bOYnNuhzg" },
+      { name: "Calm Ocean Waves", img: "https://img.youtube.com/vi/V-_O7nl0Ii0/mqdefault.jpg", link: "https://www.youtube.com/watch?v=V-_O7nl0Ii0" }
+    ],
+    movies: [
+      { name: "Inside Out", img: "https://image.tmdb.org/t/p/w300/lRHE0vzf3oYJrhbsHXjIkF4Tl5A.jpg", link: "https://www.google.com/search?q=inside+out+movie" },
+      { name: "Harry Potter and the Prisoner of Azkaban", img: "https://image.tmdb.org/t/p/w300/aWxwnYoe8p2d2fcxOqtvAtJ72Rw.jpg", link: "https://www.google.com/search?q=harry+potter+prisoner+of+azkaban+movie" },
+      { name: "Narnia: The Lion, the Witch and the Wardrobe", img: "https://image.tmdb.org/t/p/w300/iREd0rNCjYdf5Ar0vfaW32yrkm.jpg", link: "https://www.google.com/search?q=narnia+lion+witch+wardrobe+movie" },
+      { name: "Coco", img: "https://image.tmdb.org/t/p/w300/gGEsBPAijhVUFoiNpgZXqRVWJt2.jpg", link: "https://www.google.com/search?q=coco+movie" },
+      { name: "The Good Dinosaur", img: "https://image.tmdb.org/t/p/w300/qe6s9p9xGXIkb5hA3Z9eU6b7K9a.jpg", link: "https://www.google.com/search?q=the+good+dinosaur+movie" }
+    ],
+    books: [
+      { name: "The Power of Now", img: "https://covers.openlibrary.org/b/id/10389384-M.jpg", link: "https://www.google.com/search?q=the+power+of+now+book" },
+      { name: "Atomic Habits", img: "https://covers.openlibrary.org/b/id/10594701-M.jpg", link: "https://www.google.com/search?q=atomic+habits+book" },
+      { name: "Feel the Fear and Do It Anyway", img: "https://covers.openlibrary.org/b/id/8225615-M.jpg", link: "https://www.google.com/search?q=feel+the+fear+and+do+it+anyway+book" },
+      { name: "Daring Greatly", img: "https://covers.openlibrary.org/b/id/7999253-M.jpg", link: "https://www.google.com/search?q=daring+greatly+book" },
+      { name: "The Confidence Gap", img: "https://covers.openlibrary.org/b/id/8232412-M.jpg", link: "https://www.google.com/search?q=the+confidence+gap+book" }
+    ]
+  },
+
+  confident: {
+    emojis: ["😎", "💪", "🔥"],
+    music: [
+      { name: "Hall of Fame", img: "https://img.youtube.com/vi/mk48xRzuNvA/mqdefault.jpg", link: "https://www.youtube.com/watch?v=mk48xRzuNvA" },
+      { name: "Believer", img: "https://img.youtube.com/vi/7wtfhZwyrcc/mqdefault.jpg", link: "https://www.youtube.com/watch?v=7wtfhZwyrcc" },
+      { name: "Stronger", img: "https://img.youtube.com/vi/PsO6ZnUZI0g/mqdefault.jpg", link: "https://www.youtube.com/watch?v=PsO6ZnUZI0g" },
+      { name: "Unstoppable", img: "https://img.youtube.com/vi/YaEG2aWJnZ8/mqdefault.jpg", link: "https://www.youtube.com/watch?v=YaEG2aWJnZ8" },
+      { name: "We Will Rock You", img: "https://img.youtube.com/vi/-tJYN-eG1zk/mqdefault.jpg", link: "https://www.youtube.com/watch?v=-tJYN-eG1zk" }
+    ],
+    movies: [
+      { name: "Rocky", img: "https://image.tmdb.org/t/p/w300/i5eztV7eow8zRcfgWyMGQkjZEVK.jpg", link: "https://www.google.com/search?q=rocky+movie" },
+      { name: "Creed", img: "https://image.tmdb.org/t/p/w300/5y9P8vVuruToJQNxIgPezn9P6yP.jpg", link: "https://www.google.com/search?q=creed+movie" },
+      { name: "Pursuit of Happyness", img: "https://image.tmdb.org/t/p/w300/f6l9rghSHORkWLurUg8C7xUt7yF.jpg", link: "https://www.google.com/search?q=pursuit+of+happyness+movie" },
+      { name: "MS Dhoni: The Untold Story", img: "https://image.tmdb.org/t/p/w300/7KQqreJqezvwYUy1dG6i9G3s4kF.jpg", link: "https://www.google.com/search?q=MS+Dhoni+the+untold+story+movie" },
+      { name: "Spider-Man: Homecoming", img: "https://image.tmdb.org/t/p/w300/c24sv2weTHPsmDa7jEMN0m2P3RT.jpg", link: "https://www.google.com/search?q=spider+man+homecoming+movie" }
+    ],
+    books: [
+      { name: "Rich Dad Poor Dad", img: "https://covers.openlibrary.org/b/id/10594872-M.jpg", link: "https://www.google.com/search?q=rich+dad+poor+dad+book" },
+      { name: "Think and Grow Rich", img: "https://covers.openlibrary.org/b/id/7222161-M.jpg", link: "https://www.google.com/search?q=think+and+grow+rich+book" },
+      { name: "Can't Hurt Me", img: "https://covers.openlibrary.org/b/id/10518305-M.jpg", link: "https://www.google.com/search?q=can%27t+hurt+me+book" },
+      { name: "Wings of Fire", img: "https://covers.openlibrary.org/b/id/7222246-M.jpg", link: "https://www.google.com/search?q=wings+of+fire+book" },
+      { name: "Grit", img: "https://covers.openlibrary.org/b/id/10958351-M.jpg", link: "https://www.google.com/search?q=grit+angela+duckworth+book" }
+    ]
+  },
+
+  relaxed: {
+    emojis: ["😌", "🌿", "🧘‍♂️"],
+    music: [
+      { name: "Soft Piano", img: "https://img.youtube.com/vi/1ZYbU82GVz4/mqdefault.jpg", link: "https://www.youtube.com/watch?v=1ZYbU82GVz4" },
+      { name: "Night Jazz", img: "https://img.youtube.com/vi/MYPVQccHhAQ/mqdefault.jpg", link: "https://www.youtube.com/watch?v=MYPVQccHhAQ" },
+      { name: "Lo-Fi Chill", img: "https://img.youtube.com/vi/jfKfPfyJRdk/mqdefault.jpg", link: "https://www.youtube.com/watch?v=jfKfPfyJRdk" },
+      { name: "Rain Sounds", img: "https://img.youtube.com/vi/3nQNiWdeH2Q/mqdefault.jpg", link: "https://www.youtube.com/watch?v=3nQNiWdeH2Q" },
+      { name: "Chillhop Essentials", img: "https://img.youtube.com/vi/5yx6BWlEVcY/mqdefault.jpg", link: "https://www.youtube.com/watch?v=5yx6BWlEVcY" }
+    ],
+    movies: [
+      { name: "The Intern", img: "https://image.tmdb.org/t/p/w300/7zrM1I2cG5qj1ZB2wIVoE1L5cFI.jpg", link: "https://www.google.com/search?q=the+intern+movie" },
+      { name: "Little Forest", img: "https://image.tmdb.org/t/p/w300/5KCVkau1HEl7ZzfPsKAPM0sMiKc.jpg", link: "https://www.google.com/search?q=little+forest+movie" },
+      { name: "Finding Dory", img: "https://image.tmdb.org/t/p/w300/3UVe8NL1E2ZdUZ9EDlKGJY5UzE.jpg", link: "https://www.google.com/search?q=finding+dory+movie" },
+      { name: "Soul", img: "https://image.tmdb.org/t/p/w300/hm58Jw4Lw8OIeECIq5qyPYhAeRJ.jpg", link: "https://www.google.com/search?q=soul+movie" },
+      { name: "A Quiet Place in the Country (calm mood alt)", img: "https://image.tmdb.org/t/p/w300/arw2vcBveWOVZr6pxd9XTd1TdQa.jpg", link: "https://www.google.com/search?q=calm+feel+good+movies" }
+    ],
+    books: [
+      { name: "Ikigai", img: "https://covers.openlibrary.org/b/id/10958337-M.jpg", link: "https://www.google.com/search?q=ikigai+book" },
+      { name: "The Power of Now", img: "https://covers.openlibrary.org/b/id/10389384-M.jpg", link: "https://www.google.com/search?q=the+power+of+now+book" },
+      { name: "Think Like a Monk", img: "https://covers.openlibrary.org/b/id/10200627-M.jpg", link: "https://www.google.com/search?q=think+like+a+monk+book" },
+      { name: "The Miracle of Mindfulness", img: "https://covers.openlibrary.org/b/id/240726-M.jpg", link: "https://www.google.com/search?q=miracle+of+mindfulness+book" },
+      { name: "The Alchemist", img: "https://covers.openlibrary.org/b/id/8270605-M.jpg", link: "https://www.google.com/search?q=the+alchemist+book" }
+    ]
+  },
+
+  lonely: {
+    emojis: ["🥀", "🙁", "💔"],
+    music: [
+      { name: "Arcade", img: "https://img.youtube.com/vi/51u5fnyrGj4/mqdefault.jpg", link: "https://www.youtube.com/watch?v=51u5fnyrGj4" },
+      { name: "All I Want – Kodaline", img: "https://img.youtube.com/vi=mtf7hC17IBM/mqdefault.jpg", link: "https://www.youtube.com/watch?v=mtf7hC17IBM" },
+      { name: "Let Her Go", img: "https://img.youtube.com/vi/RBumgq5yVrA/mqdefault.jpg", link: "https://www.youtube.com/watch?v=RBumgq5yVrA" },
+      { name: "Lovely", img: "https://img.youtube.com/vi=V1Pl8CzNzCw/mqdefault.jpg", link: "https://www.youtube.com/watch?v=V1Pl8CzNzCw" },
+      { name: "Let Me Down Slowly", img: "https://img.youtube.com/vi/50VNCymT-Cs/mqdefault.jpg", link: "https://www.youtube.com/watch?v=50VNCymT-Cs" }
+    ],
+    movies: [
+      { name: "Her", img: "https://image.tmdb.org/t/p/w300/y4XBYeneir7IE7ucoyU3o0cLs7D.jpg", link: "https://www.google.com/search?q=her+movie" },
+      { name: "Five Feet Apart", img: "https://image.tmdb.org/t/p/w300/kreTuJBkUjVWePRfhHZuYfhNE1T.jpg", link: "https://www.google.com/search?q=five+feet+apart+movie" },
+      { name: "A Walk to Remember", img: "https://image.tmdb.org/t/p/w300/2uf9q8dJhV3U9sH9SqcWb8Cdy1j.jpg", link: "https://www.google.com/search?q=a+walk+to+remember+movie" },
+      { name: "La La Land", img: "https://image.tmdb.org/t/p/w300/uDO8zWDhfWwoFdKS4fzkUJt0Rf0.jpg", link: "https://www.google.com/search?q=la+la+land+movie" },
+      { name: "The Perks of Being a Wallflower", img: "https://image.tmdb.org/t/p/w300/3b1YwZ0dszM1AjWlUqYKP98hGTL.jpg", link: "https://www.google.com/search?q=perks+of+being+a+wallflower+movie" }
+    ],
+    books: [
+      { name: "The Fault in Our Stars", img: "https://covers.openlibrary.org/b/id/8321836-M.jpg", link: "https://www.google.com/search?q=the+fault+in+our+stars+book" },
+      { name: "Looking for Alaska", img: "https://covers.openlibrary.org/b/id/7894896-M.jpg", link: "https://www.google.com/search?q=looking+for+alaska+book" },
+      { name: "Five Feet Apart", img: "https://covers.openlibrary.org/b/id/10085359-M.jpg", link: "https://www.google.com/search?q=five+feet+apart+book" },
+      { name: "Eleanor Oliphant is Completely Fine", img: "https://covers.openlibrary.org/b/id/9162794-M.jpg", link: "https://www.google.com/search?q=eleanor+oliphant+is+completely+fine+book" },
+      { name: "Me Before You", img: "https://covers.openlibrary.org/b/id/8232406-M.jpg", link: "https://www.google.com/search?q=me+before+you+book" }
+    ]
+  },
+
+  romantic: {
+    emojis: ["💖", "😍", "💘"],
+    music: [
+      { name: "Perfect – Ed Sheeran", img: "https://img.youtube.com/vi/2Vv-BfVoq4g/mqdefault.jpg", link: "https://www.youtube.com/watch?v=2Vv-BfVoq4g" },
+      { name: "Tum Hi Ho", img: "https://img.youtube.com/vi=Umqb9KENgmk/mqdefault.jpg", link: "https://www.youtube.com/watch?v=Umqb9KENgmk" },
+      { name: "Pehli Nazar Mein", img: "https://img.youtube.com/vi=cdZ4d2RMzK4/mqdefault.jpg", link: "https://www.youtube.com/watch?v=cdZ4d2RMzK4" },
+      { name: "Raabta", img: "https://img.youtube.com/vi=CE4SB7P1Zl4/mqdefault.jpg", link: "https://www.youtube.com/watch?v=CE4SB7P1Zl4" },
+      { name: "Love Story", img: "https://img.youtube.com/vi=8xg3vE8Ie_E/mqdefault.jpg", link: "https://www.youtube.com/watch?v=8xg3vE8Ie_E" }
+    ],
+    movies: [
+      { name: "Titanic", img: "https://image.tmdb.org/t/p/w300/9xjZS2rlVxm8SFx8kPC3aIGCOYQ.jpg", link: "https://www.google.com/search?q=titanic+movie" },
+      { name: "The Notebook", img: "https://image.tmdb.org/t/p/w300/qom1SZSENdmHFNZBXbtJAU0WTlC.jpg", link: "https://www.google.com/search?q=the+notebook+movie" },
+      { name: "La La Land", img: "https://image.tmdb.org/t/p/w300/uDO8zWDhfWwoFdKS4fzkUJt0Rf0.jpg", link: "https://www.google.com/search?q=la+la+land+movie" },
+      { name: "Yeh Jawaani Hai Deewani", img: "https://image.tmdb.org/t/p/w300/4YQG6qQ7uWGINuDhcE7UZ5EONde.jpg", link: "https://www.google.com/search?q=yeh+jawaani+hai+deewani+movie" },
+      { name: "Jab We Met", img: "https://image.tmdb.org/t/p/w300/zN9uJqCkCmDYomYMhNu4qLZ7Yf7.jpg", link: "https://www.google.com/search?q=jab+we+met+movie" }
+    ],
+    books: [
+      { name: "It Ends With Us", img: "https://covers.openlibrary.org/b/id/12879520-M.jpg", link: "https://www.google.com/search?q=it+ends+with+us+book" },
+      { name: "The Notebook", img: "https://covers.openlibrary.org/b/id/9252534-M.jpg", link: "https://www.google.com/search?q=the+notebook+book" },
+      { name: "Me Before You", img: "https://covers.openlibrary.org/b/id/8232406-M.jpg", link: "https://www.google.com/search?q=me+before+you+book" },
+      { name: "Five Feet Apart", img: "https://covers.openlibrary.org/b/id/10085359-M.jpg", link: "https://www.google.com/search?q=five+feet+apart+book" },
+      { name: "The Fault in Our Stars", img: "https://covers.openlibrary.org/b/id/8321836-M.jpg", link: "https://www.google.com/search?q=the+fault+in+our+stars+book" }
+    ]
+  },
+
+  angry: {
+    emojis: ["😠", "😤", "💢"],
+    music: [
+      { name: "Believer", img: "https://img.youtube.com/vi/7wtfhZwyrcc/mqdefault.jpg", link: "https://www.youtube.com/watch?v=7wtfhZwyrcc" },
+      { name: "Lose Yourself", img: "https://img.youtube.com/vi/_Yhyp-_hX2s/mqdefault.jpg", link: "https://www.youtube.com/watch?v=_Yhyp-_hX2s" },
+      { name: "Stronger", img: "https://img.youtube.com/vi/PsO6ZnUZI0g/mqdefault.jpg", link: "https://www.youtube.com/watch?v=PsO6ZnUZI0g" },
+      { name: "Whatever It Takes", img: "https://img.youtube.com/vi=gOsM-DYAEhY/mqdefault.jpg", link: "https://www.youtube.com/watch?v=gOsM-DYAEhY" },
+      { name: "Radioactive", img: "https://img.youtube.com/vi=ktvTqknDobU/mqdefault.jpg", link: "https://www.youtube.com/watch?v=ktvTqknDobU" }
+    ],
+    movies: [
+      { name: "Avengers", img: "https://image.tmdb.org/t/p/w300/RYMX2wcKCBAr24UyPD7xwmjaTn.jpg", link: "https://www.google.com/search?q=avengers+movie" },
+      { name: "John Wick", img: "https://image.tmdb.org/t/p/w300/fZPSd91yGE9fCcCe6OoQr6E3Bev.jpg", link: "https://www.google.com/search?q=john+wick+movie" },
+      { name: "Baahubali", img: "https://image.tmdb.org/t/p/w300/9BAjt8nSSms62uOVYn1t3C3dVto.jpg", link: "https://www.google.com/search?q=baahubali+movie" },
+      { name: "Mad Max: Fury Road", img: "https://image.tmdb.org/t/p/w300/kqjL17yufvn9OVLyXYpvtyrFfak.jpg", link: "https://www.google.com/search?q=mad+max+fury+road+movie" },
+      { name: "The Dark Knight", img: "https://image.tmdb.org/t/p/w300/qJ2tW6WMUDux911r6m7haRef0WH.jpg", link: "https://www.google.com/search?q=the+dark+knight+movie" }
+    ],
+    books: [
+      { name: "Wings of Fire", img: "https://covers.openlibrary.org/b/id/7222246-M.jpg", link: "https://www.google.com/search?q=wings+of+fire+book" },
+      { name: "Atomic Habits", img: "https://covers.openlibrary.org/b/id/10594701-M.jpg", link: "https://www.google.com/search?q=atomic+habits+book" },
+      { name: "Can't Hurt Me", img: "https://covers.openlibrary.org/b/id/10518305-M.jpg", link: "https://www.google.com/search?q=can%27t+hurt+me+book" },
+      { name: "The 7 Habits of Highly Effective People", img: "https://covers.openlibrary.org/b/id/240726-M.jpg", link: "https://www.google.com/search?q=7+habits+of+highly+effective+people+book" },
+      { name: "Mindset", img: "https://covers.openlibrary.org/b/id/240727-M.jpg", link: "https://www.google.com/search?q=mindset+carol+dweck+book" }
+    ]
+  },
+
+  surprise: {
+    emojis: ["😲", "🤯", "😮"],
+    music: [
+      { name: "Adventure of a Lifetime", img: "https://img.youtube.com/vi/QtXby3twMmI/mqdefault.jpg", link: "https://www.youtube.com/watch?v=QtXby3twMmI" },
+      { name: "Believer (again pump)", img: "https://img.youtube.com/vi/7wtfhZwyrcc/mqdefault.jpg", link: "https://www.youtube.com/watch?v=7wtfhZwyrcc" },
+      { name: "Belong", img: "https://img.youtube.com/vi=something/mqdefault.jpg", link: "https://www.youtube.com/results?search_query=belong+song" },
+      { name: "Counting Stars", img: "https://img.youtube.com/vi=hT_nvWreIhg/mqdefault.jpg", link: "https://www.youtube.com/watch?v=hT_nvWreIhg" },
+      { name: "Pompeii", img: "https://img.youtube.com/vi=F90Cw4l-8NY/mqdefault.jpg", link: "https://www.youtube.com/watch?v=F90Cw4l-8NY" }
+    ],
+    movies: [
+      { name: "Inception", img: "https://image.tmdb.org/t/p/w300/edv5CZvWj09upOsy2Y6IwDhK8bt.jpg", link: "https://www.google.com/search?q=inception+movie" },
+      { name: "Interstellar", img: "https://image.tmdb.org/t/p/w300/gEU2QniE6E77NI6lCU6MxlNBvIx.jpg", link: "https://www.google.com/search?q=interstellar+movie" },
+      { name: "Now You See Me", img: "https://image.tmdb.org/t/p/w300/n3HUvIes5vz0pBe7Xg6rQ6Mrm3.jpg", link: "https://www.google.com/search?q=now+you+see+me+movie" },
+      { name: "Doctor Strange", img: "https://image.tmdb.org/t/p/w300/4PiiNGXj1KENTmCBHeN6Mskj2Fq.jpg", link: "https://www.google.com/search?q=doctor+strange+movie" },
+      { name: "Edge of Tomorrow", img: "https://image.tmdb.org/t/p/w300/uUHvlkLavotfGsNtosDy8ShsIYF.jpg", link: "https://www.google.com/search?q=edge+of+tomorrow+movie" }
+    ],
+    books: [
+      { name: "Sherlock Holmes", img: "https://covers.openlibrary.org/b/id/8225631-M.jpg", link: "https://www.google.com/search?q=sherlock+holmes+book" },
+      { name: "The Girl on the Train", img: "https://covers.openlibrary.org/b/id/8225635-M.jpg", link: "https://www.google.com/search?q=the+girl+on+the+train+book" },
+      { name: "Gone Girl", img: "https://covers.openlibrary.org/b/id/8231998-M.jpg", link: "https://www.google.com/search?q=gone+girl+book" },
+      { name: "The Da Vinci Code", img: "https://covers.openlibrary.org/b/id/240728-M.jpg", link: "https://www.google.com/search?q=da+vinci+code+book" },
+      { name: "Murder on the Orient Express", img: "https://covers.openlibrary.org/b/id/8232010-M.jpg", link: "https://www.google.com/search?q=murder+on+the+orient+express+book" }
+    ]
+  },
+
+  excited: {
+    emojis: ["🤩", "🎉", "⚡"],
+    music: [
+      { name: "Can't Stop The Feeling", img: "https://img.youtube.com/vi/ru0K8uYEZWw/mqdefault.jpg", link: "https://www.youtube.com/watch?v=ru0K8uYEZWw" },
+      { name: "Firework", img: "https://img.youtube.com/vi=QGJuMBdaqIw/mqdefault.jpg", link: "https://www.youtube.com/watch?v=QGJuMBdaqIw" },
+      { name: "Thunder", img: "https://img.youtube.com/vi=fKopy74weus/mqdefault.jpg", link: "https://www.youtube.com/watch?v=fKopy74weus" },
+      { name: "On Top of the World", img: "https://img.youtube.com/vi/w5tWYmIOWGk/mqdefault.jpg", link: "https://www.youtube.com/watch?v=w5tWYmIOWGk" },
+      { name: "Hall of Fame", img: "https://img.youtube.com/vi/mk48xRzuNvA/mqdefault.jpg", link: "https://www.youtube.com/watch?v=mk48xRzuNvA" }
+    ],
+    movies: [
+      { name: "Avengers: Endgame", img: "https://image.tmdb.org/t/p/w300/or06FN3Dka5tukK1e9sl16pB3iy.jpg", link: "https://www.google.com/search?q=avengers+endgame+movie" },
+      { name: "Spider-Man: No Way Home", img: "https://image.tmdb.org/t/p/w300/1g0dhYtq4irTY1GPXvft6k4YLjm.jpg", link: "https://www.google.com/search?q=spider+man+no+way+home+movie" },
+      { name: "Baahubali 2", img: "https://image.tmdb.org/t/p/w300/8HG2Q9VQjho2N1khS0d8qZeeqNH.jpg", link: "https://www.google.com/search?q=baahubali+2+movie" },
+      { name: "RRR", img: "https://image.tmdb.org/t/p/w300/KephQ7nCj9ZwTe0nRteo80Ppf4a.jpg", link: "https://www.google.com/search?q=rrr+movie" },
+      { name: "Incredibles 2", img: "https://image.tmdb.org/t/p/w300/9lFKBtaVIhP7E2Pk0IY1CwTKTMZ.jpg", link: "https://www.google.com/search?q=incredibles+2+movie" }
+    ],
+    books: [
+      { name: "Rich Dad Poor Dad", img: "https://covers.openlibrary.org/b/id/10594872-M.jpg", link: "https://www.google.com/search?q=rich+dad+poor+dad+book" },
+      { name: "Think and Grow Rich", img: "https://covers.openlibrary.org/b/id/7222161-M.jpg", link: "https://www.google.com/search?q=think+and+grow+rich+book" },
+      { name: "The 10X Rule", img: "https://covers.openlibrary.org/b/id/8232015-M.jpg", link: "https://www.google.com/search?q=10x+rule+book" },
+      { name: "Start With Why", img: "https://covers.openlibrary.org/b/id/8232020-M.jpg", link: "https://www.google.com/search?q=start+with+why+book" },
+      { name: "Atomic Habits", img: "https://covers.openlibrary.org/b/id/10594701-M.jpg", link: "https://www.google.com/search?q=atomic+habits+book" }
+    ]
+  },
+
+  bored: {
+    emojis: ["😐", "🥱", "🙄"],
+    music: [
+      { name: "Chillhop Essentials", img: "https://img.youtube.com/vi/5yx6BWlEVcY/mqdefault.jpg", link: "https://www.youtube.com/watch?v=5yx6BWlEVcY" },
+      { name: "Coffee Jazz", img: "https://img.youtube.com/vi/MYPVQccHhAQ/mqdefault.jpg", link: "https://www.youtube.com/watch?v=MYPVQccHhAQ" },
+      { name: "Lo-Fi Study Beats", img: "https://img.youtube.com/vi=DWcJFNfaw9c/mqdefault.jpg", link: "https://www.youtube.com/watch?v=DWcJFNfaw9c" },
+      { name: "Indie Pop Chill", img: "https://img.youtube.com/vi=Nxg7c4qEfAQ/mqdefault.jpg", link: "https://www.youtube.com/results?search_query=indie+pop+chill" },
+      { name: "Chillstep Mix", img: "https://img.youtube.com/vi=something2/mqdefault.jpg", link: "https://www.youtube.com/results?search_query=chillstep+mix" }
+    ],
+    movies: [
+      { name: "Minions", img: "https://image.tmdb.org/t/p/w300/wKiOkZTN9lUUUNZLmtnwubZYONg.jpg", link: "https://www.google.com/search?q=minions+movie" },
+      { name: "Despicable Me", img: "https://image.tmdb.org/t/p/w300/5wPpzKkS7AwzobCj4H0nRWoW0Xs.jpg", link: "https://www.google.com/search?q=despicable+me+movie" },
+      { name: "Kung Fu Panda", img: "https://image.tmdb.org/t/p/w300/wzYHCzjsvsv1uqTZWE72HO7yIuJ.jpg", link: "https://www.google.com/search?q=kung+fu+panda+movie" },
+      { name: "The Lego Movie", img: "https://image.tmdb.org/t/p/w300/9klBxHs5cGMwz1kLzpiVCif4Xc4.jpg", link: "https://www.google.com/search?q=lego+movie" },
+      { name: "Jumanji: Welcome to the Jungle", img: "https://image.tmdb.org/t/p/w300/bXrZ5iHBEjH7WMidbUDQ0U2xbmr.jpg", link: "https://www.google.com/search?q=jumanji+welcome+to+the+jungle+movie" }
+    ],
+    books: [
+      { name: "Diary of a Wimpy Kid", img: "https://covers.openlibrary.org/b/id/8231996-M.jpg", link: "https://www.google.com/search?q=diary+of+a+wimpy+kid+book" },
+      { name: "Percy Jackson: Lightning Thief", img: "https://covers.openlibrary.org/b/id/10561029-M.jpg", link: "https://www.google.com/search?q=percy+jackson+lightning+thief+book" },
+      { name: "Harry Potter and the Chamber of Secrets", img: "https://covers.openlibrary.org/b/id/7884868-M.jpg", link: "https://www.google.com/search?q=harry+potter+chamber+of+secrets+book" },
+      { name: "The Secret Seven", img: "https://covers.openlibrary.org/b/id/8232030-M.jpg", link: "https://www.google.com/search?q=secret+seven+book" },
+      { name: "The Famous Five", img: "https://covers.openlibrary.org/b/id/8232040-M.jpg", link: "https://www.google.com/search?q=famous+five+book" }
+    ]
+  },
+
+  energetic: {
+    emojis: ["⚡", "🏃‍♂️", "💥"],
+    music: [
+      { name: "Stronger", img: "https://img.youtube.com/vi/PsO6ZnUZI0g/mqdefault.jpg", link: "https://www.youtube.com/watch?v=PsO6ZnUZI0g" },
+      { name: "Eye of the Tiger", img: "https://img.youtube.com/vi=btPJPFnesV4/mqdefault.jpg", link: "https://www.youtube.com/watch?v=btPJPFnesV4" },
+      { name: "Believer", img: "https://img.youtube.com/vi/7wtfhZwyrcc/mqdefault.jpg", link: "https://www.youtube.com/watch?v=7wtfhZwyrcc" },
+      { name: "Till I Collapse", img: "https://img.youtube.com/vi/Obim8BYGnOE/mqdefault.jpg", link: "https://www.youtube.com/watch?v=Obim8BYGnOE" },
+      { name: "Legends Never Die", img: "https://img.youtube.com/vi=r6zIGXun57U/mqdefault.jpg", link: "https://www.youtube.com/watch?v=r6zIGXun57U" }
+    ],
+    movies: [
+      { name: "Rocky", img: "https://image.tmdb.org/t/p/w300/i5eztV7eow8zRcfgWyMGQkjZEVK.jpg", link: "https://www.google.com/search?q=rocky+movie" },
+      { name: "Creed II", img: "https://image.tmdb.org/t/p/w300/v3QIFUWgtVN4We9aBTk2C9sxuNz.jpg", link: "https://www.google.com/search?q=creed+2+movie" },
+      { name: "Bhag Milkha Bhag", img: "https://image.tmdb.org/t/p/w300/mnZ6lDubH2UQaFvBOKKUz7Dnk3k.jpg", link: "https://www.google.com/search?q=bhag+milkha+bhag+movie" },
+      { name: "Chak De! India", img: "https://image.tmdb.org/t/p/w300/8A6z26OpN6gknRC5tlE7YQ5ANe9.jpg", link: "https://www.google.com/search?q=chak+de+india+movie" },
+      { name: "Coach Carter", img: "https://image.tmdb.org/t/p/w300/2bVYvUo9r06VTzT8YzeveXeM5bU.jpg", link: "https://www.google.com/search?q=coach+carter+movie" }
+    ],
+    books: [
+      { name: "Can't Hurt Me", img: "https://covers.openlibrary.org/b/id/10518305-M.jpg", link: "https://www.google.com/search?q=can%27t+hurt+me+book" },
+      { name: "Grit", img: "https://covers.openlibrary.org/b/id/10958351-M.jpg", link: "https://www.google.com/search?q=grit+angela+duckworth+book" },
+      { name: "Relentless", img: "https://covers.openlibrary.org/b/id/8232060-M.jpg", link: "https://www.google.com/search?q=relentless+tim+grover+book" },
+      { name: "The 5 AM Club", img: "https://covers.openlibrary.org/b/id/10594750-M.jpg", link: "https://www.google.com/search?q=5+am+club+book" },
+      { name: "Mindset", img: "https://covers.openlibrary.org/b/id/240727-M.jpg", link: "https://www.google.com/search?q=mindset+carol+dweck+book" }
+    ]
+  },
+
+  neutral: {
+    emojis: ["😐", "🙂", "🤔"],
+    music: [
+      { name: "Chill Beats", img: "https://img.youtube.com/vi/5qap5aO4i9A/mqdefault.jpg", link: "https://www.youtube.com/watch?v=5qap5aO4i9A" },
+      { name: "Lofi Study", img: "https://img.youtube.com/vi=DWcJFNfaw9c/mqdefault.jpg", link: "https://www.youtube.com/watch?v=DWcJFNfaw9c" },
+      { name: "Jazz Vibes", img: "https://img.youtube.com/vi/MYPVQccHhAQ/mqdefault.jpg", link: "https://www.youtube.com/watch?v=MYPVQccHhAQ" },
+      { name: "Soft Instrumental", img: "https://img.youtube.com/vi/2OEL4P1Rz04/mqdefault.jpg", link: "https://www.youtube.com/watch?v=2OEL4P1Rz04" },
+      { name: "Chillstep Mix", img: "https://img.youtube.com/vi=something2/mqdefault.jpg", link: "https://www.youtube.com/results?search_query=chillstep+mix" }
+    ],
+    movies: [
+      { name: "A Beautiful Day in the Neighborhood", img: "https://image.tmdb.org/t/p/w300/p9vCAVhDK375XyobVcKqzqzsUHE.jpg", link: "https://www.google.com/search?q=a+beautiful+day+in+the+neighborhood+movie" },
+      { name: "Little Women", img: "https://image.tmdb.org/t/p/w300/yn5ihODtZ7ofn8p2CF4P6xTQY8q.jpg", link: "https://www.google.com/search?q=little+women+movie" },
+      { name: "The Secret Life of Walter Mitty", img: "https://image.tmdb.org/t/p/w300/9P3lXbHvFxc8c3JgRY7PxCkZSeK.jpg", link: "https://www.google.com/search?q=secret+life+of+walter+mitty+movie" },
+      { name: "The Lunchbox", img: "https://image.tmdb.org/t/p/w300/As5ijYgqCAsQuzM3IXqObtWjFt7.jpg", link: "https://www.google.com/search?q=the+lunchbox+movie" },
+      { name: "October Sky", img: "https://image.tmdb.org/t/p/w300/ei0I7b8IuC7mTguSu2VvulaHYkE.jpg", link: "https://www.google.com/search?q=october+sky+movie" }
+    ],
+    books: [
+      { name: "Young Adult Fiction Collections", img: "https://covers.openlibrary.org/b/id/9874152-M.jpg", link: "https://www.google.com/search?q=best+young+adult+fiction+books" },
+      { name: "The Little Prince", img: "https://covers.openlibrary.org/b/id/7924916-M.jpg", link: "https://www.google.com/search?q=the+little+prince+book" },
+      { name: "The Book Thief", img: "https://covers.openlibrary.org/b/id/7279365-M.jpg", link: "https://www.google.com/search?q=the+book+thief+book" },
+      { name: "Tuesdays with Morrie", img: "https://covers.openlibrary.org/b/id/8225639-M.jpg", link: "https://www.google.com/search?q=tuesdays+with+morrie+book" },
+      { name: "The Kite Runner", img: "https://covers.openlibrary.org/b/id/240729-M.jpg", link: "https://www.google.com/search?q=the+kite+runner+book" }
+    ]
+  }
+};
+
+
+
+// ================== UI FUNCTIONS ==================
+function renderItems(id, items) {
+  const box = document.getElementById(id);
+  box.innerHTML = "";
+
+  items.forEach(item => {
+    const div = document.createElement("div");
+    div.className = "item";
+    div.innerHTML = `<img src="${item.img}"><div>${item.name}</div>`;
+    if (item.link) div.onclick = () => window.open(item.link, "_blank");
+    box.appendChild(div);
+  });
+}
+
+function showRecommendations(emotion) {
+  document.getElementById("emotion").innerText = emotion.toUpperCase();
+  const rec = data[emotion] || data["happy"];
+
+  renderItems("music", rec.music);
+  renderItems("books", rec.books);
+  renderItems("movies", rec.movies);
+}
+
+// ================== CAMERA ==================
+async function startCamera() {
+  const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+  video.srcObject = stream;
+}
+
+// ================== MODELS ==================
+async function loadModels() {
+  const URL = "https://raw.githubusercontent.com/justadudewhohacks/face-api.js/master/weights";
+  await faceapi.nets.tinyFaceDetector.loadFromUri(URL);
+  await faceapi.nets.faceExpressionNet.loadFromUri(URL);
+}
+
+// ================== DETECTION CONTROL ==================
+toggleBtn.addEventListener("click", () => {
+  detecting = !detecting;
+
+  if (detecting) {
+    toggleBtn.innerText = "⏹ Stop Detection";
+    toggleBtn.classList.add("stop");
+    startDetection();
+  } else {
+    toggleBtn.innerText = "⏵ Start Detection";
+    toggleBtn.classList.remove("stop");
+    stopDetection();
+  }
+});
+
+function startDetection() {
+  const size = {
+    width: video.videoWidth,
+    height: video.videoHeight
+  };
+
+  canvas.width = size.width;
+  canvas.height = size.height;
+  faceapi.matchDimensions(canvas, size);
+
+  detectInterval = setInterval(async () => {
+    const detections = await faceapi
+      .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions())
+      .withFaceExpressions();
+
+    const ctx = canvas.getContext("2d");
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    if (!detections) return;
+
+    const resized = faceapi.resizeResults(detections, size);
+    faceapi.draw.drawDetections(canvas, resized);
+
+    let best = { name: "happy", prob: 0 };
+    for (let e in detections.expressions) {
+      if (detections.expressions[e] > best.prob) {
+        best = { name: e, prob: detections.expressions[e] };
+      }
+    }
+
+    showRecommendations(best.name);
+  }, 600);
+}
+
+function stopDetection() {
+  clearInterval(detectInterval);
+  const ctx = canvas.getContext("2d");
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  document.getElementById("emotion").innerText = "STOPPED";
+  document.getElementById("music").innerHTML = "";
+  document.getElementById("books").innerHTML = "";
+  document.getElementById("movies").innerHTML = "";
+}
+
+// ================== START APP ==================
+async function startApp() {
+  await loadModels();
+  await startCamera();
+}
+
+startApp();
+</script>
+
+</body>
+</html>
